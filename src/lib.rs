@@ -30,6 +30,7 @@
 #![allow(clippy::implicit_hasher)]
 
 use std::collections::HashMap;
+use std::fmt::Display;
 
 /// Library errors.
 #[derive(thiserror::Error, Debug)]
@@ -40,7 +41,10 @@ pub struct Error(String);
 ///
 /// Given an input string `template`, replace tokens of the form `${foo}` with
 /// values provided in `variables`.
-pub fn substitute<T>(template: T, variables: &HashMap<String, String>) -> Result<String, Error>
+pub fn substitute<T>(
+    template: T,
+    variables: &HashMap<String, impl Display>,
+) -> Result<String, Error>
 where
     T: Into<String>,
 {
@@ -50,11 +54,12 @@ where
     }
 
     for (k, v) in variables {
+        let s = format!("{}", v);
         validate(k, "key")?;
-        validate(v, "value")?;
+        validate(&s, "value")?;
 
         let from = format!("${{{}}}", k);
-        output = output.replace(&from, v)
+        output = output.replace(&from, &s)
     }
 
     Ok(output)
@@ -141,7 +146,7 @@ mod tests {
     #[test]
     fn basic_empty_vars() {
         let template = "foo ${VAR} bar";
-        let env = HashMap::new();
+        let env = HashMap::<String, String>::new();
 
         let out = substitute(template, &env).unwrap();
         assert_eq!(out, template);
@@ -167,5 +172,22 @@ mod tests {
 
         let mut env = HashMap::new();
         env.insert("VAR".to_string(), "${VAR}".to_string());
+    }
+
+    #[test]
+    fn generic_hashmap() {
+        struct Item;
+        impl std::fmt::Display for Item {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                write!(f, "var")
+            }
+        }
+        let template = "foo ${VAR} bar";
+        let mut env = HashMap::new();
+        env.insert("VAR".to_string(), Item);
+
+        let out = substitute(template, &env).unwrap();
+        let expected = "foo var bar";
+        assert_eq!(out, expected);
     }
 }
